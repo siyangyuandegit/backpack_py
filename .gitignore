@@ -3,3 +3,4 @@ bq_monic
 
 .idea
 /venv
+__pycache__
