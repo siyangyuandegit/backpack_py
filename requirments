@@ -4,6 +4,8 @@ charset-normalizer==3.3.2
 cryptography==41.0.7
 idna==3.6
 pycparser==2.21
+PySocks==1.7.1
 requests==2.31.0
 urllib3==2.1.0
+websocket-client==1.7.0
 websockets==12.0
