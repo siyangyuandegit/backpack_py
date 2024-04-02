@@ -47,26 +47,28 @@ async def subscribe_to_stream(api_key, api_secret):
                         if sol_ask > 0:
                             usdc_balance, sol_balance = await get_balance(api_key, api_secret)
                             usdc_value = usdc_balance
-                            sol_value = sol_balance * (sol_bid - 0.2)
-                            print(f'当前sol: {sol_balance} 价值: {sol_value}, usdc: {usdc_balance},')
+                            adjust_price = 0.04
+
+                            sol_value = sol_balance * (sol_bid - adjust_price)
                             diff_ratio = abs(sol_value - usdc_value) / usdc_value
-                            if diff_ratio > 0.003:
+                            print(f'当前sol: {sol_balance} 价值: {sol_value}, usdc: {usdc_balance}, diff_ratio: {diff_ratio}')
+                            if diff_ratio > 0.001:
                                 # 卖出
                                 if sol_value > usdc_value:
                                     amount_to_sell = float(
-                                        format((sol_value - usdc_value) / (sol_bid - 0.1) / 2, '.2f'))
+                                        format((sol_value - usdc_value) / (sol_bid - adjust_price) / 2, '.2f'))
                                     print(f'需要卖出sol: {amount_to_sell}')
                                     await place_order('SOL_USDC', 'Ask', amount_to_sell,
-                                                      float(format(sol_bid - 0.04, '.2f')), api_key,
+                                                      float(format(sol_bid - adjust_price, '.2f')), api_key,
                                                       api_secret)
 
                                 else:
                                     amount_to_buy = float(
-                                        format((usdc_value - sol_value) / (sol_ask + 0.1) / 2, '.2f'))
+                                        format((usdc_value - sol_value) / (sol_ask + adjust_price) / 2, '.2f'))
                                     print(f'需要买入sol: {amount_to_buy}')
 
                                     await place_order('SOL_USDC', 'Bid', amount_to_buy,
-                                                      float(format(sol_ask + 0.04, '.2f')), api_key,
+                                                      float(format(sol_ask + adjust_price, '.2f')), api_key,
                                                       api_secret)
                             count += 1
                     else:
