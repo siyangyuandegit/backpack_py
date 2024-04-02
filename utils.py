@@ -10,25 +10,31 @@ import base64
 import aiohttp
 
 
-async def place_sell_order(symbol, side, price, api_key, api_secret):
+async def balance_coin_value(symbol, bid_price, ask_price, api_key, api_secret):
+    """
+
+    :param symbol:
+    :param bid_price: 当前买一
+    :param ask_price: 当前卖一
+    :param api_key:
+    :param api_secret:
+    :return:
+    """
     url = 'https://api.backpack.exchange/api/v1/order'
-    usdc_balance, sol_balance = await get_balance(api_key, api_secret)  # 假设get_balance也是异步的
-    print(usdc_balance, sol_balance, side)
-    if side == 'Bid':
-        sol_balance = float(format(usdc_balance / price * 0.9, '.2f'))
-        print(f'买sol: {sol_balance}个')
-    else:
-        sol_balance = int(sol_balance * 100) / 100
-        print(f'卖sol: {sol_balance}')
-    headers = await generate_request_params('place_order', price, side, symbol, sol_balance, api_key=api_key,
+
+    # 暂定千三
+
+
+async def place_order(symbol, side, coin_amt, price, api_key, api_secret):
+    url = 'https://api.backpack.exchange/api/v1/order'
+    headers = await generate_request_params('place_order', price, side, symbol, coin_amt, api_key=api_key,
                                             api_secret=api_secret)
 
-    # 使用aiohttp发送异步POST请求
     async with aiohttp.ClientSession() as session:
         async with session.post(url, headers=headers,
                                 json={"side": side, "symbol": "SOL_USDC", "orderType": "Limit", "timeInForce": "IOC",
-                                      "quantity": f"{sol_balance}", "price": f"{price}"}) as resp:
-            response = await resp.text()  # 获取响应内容
+                                      "quantity": f"{coin_amt}", "price": f"{price}"}) as resp:
+            response = await resp.text()
             print(response)
 
 
@@ -39,7 +45,8 @@ async def sign_sig(data, api_secret):
     return encoded_signature
 
 
-async def generate_request_params(msg=None, price=None, side=None, symbol=None, amount=None, chain=None, api_key='', api_secret=''):
+async def generate_request_params(msg=None, price=None, side=None, symbol=None, amount=None, chain=None, api_key='',
+                                  api_secret=''):
     now_time = int(time() * 1000)
     receive_window = 5000
     if msg == 'balance':
@@ -50,8 +57,14 @@ async def generate_request_params(msg=None, price=None, side=None, symbol=None, 
         # data = f'instruction=orderExecute&orderType=Market&quoteQuantity={amount}&side={side}&symbol={symbol}&timeInForce=IOC&timestamp={now_time}&window={receive_window}'
         sig = await sign_sig(data, api_secret)
     elif msg == 'deposit_addr':
-        sig = await sign_sig(f'instruction=depositAddressQuery&blockchain={chain}&timestamp={now_time}&window={receive_window}',
-                             api_secret)
+        sig = await sign_sig(
+            f'instruction=depositAddressQuery&blockchain={chain}&timestamp={now_time}&window={receive_window}',
+            api_secret)
+    elif msg == 'volume':
+        sig = await  sign_sig(
+            f'instruction=quoteVolume&blockchain={chain}&timestamp={now_time}&window={receive_window}',
+            api_secret
+        )
     else:
         sig = await sign_sig(msg, api_secret)
     headers = {
@@ -84,25 +97,24 @@ def get_order_book_depth(symbol):
     return requests.get(url, params={'symbol': symbol}).json()
 
 
-# def place_sell_order(symbol, side, price, api_key, api_secret):
-#     url = 'https://api.backpack.exchange/api/v1/order'
-#     usdc_balance, sol_balance = get_balance(api_key, api_secret)
-#     print(usdc_balance, sol_balance)
-#     if side == 'Bid':
-#         sol_balance = usdc_balance / price * 0.9
-#         print(f'买sol: {sol_balance}个')
-#     else:
-#         sol_balance = int(sol_balance * 100) / 100
-#         print(f'卖sol: {sol_balance}')
-#     headers = generate_request_params('place_order', price, side, symbol, sol_balance, api_key=api_key,
-#                                       api_secret=api_secret)
-#     res = requests.post(url, headers=headers,
-#                         json={"side": side, "symbol": "SOL_USDC", "orderType": "Limit", "timeInForce": "IOC",
-#                               "quantity": f"{sol_balance}", "price": f"{price}"})
-#     # res = requests.post(url, headers=headers,
-#     #                     json={"side": side, "symbol": "SOL_USDC", "orderType": "Market", "timeInForce": "IOC",
-#     #                           "quoteQuantity": f"{sol_balance}"})
-#     print(res.content)
+async def get_usdc_balance(api_key, api_secret):
+    url = 'https://api.backpack.exchange/api/v1/capital'
+    headers = await generate_request_params('balance', api_key=api_key, api_secret=api_secret)
+
+    # 使用aiohttp进行异步HTTP GET请求
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers) as response:
+            # 确保响应状态码为200
+            if response.status == 200:
+                res = await response.json()  # 异步获取响应的JSON数据
+                try:
+                    usdc_balance = res['USDC']['available']
+                    return float(usdc_balance)
+                except Exception as e:
+                    return 0.0
+            else:
+                print(f"Failed to get balance, status code: {response.status}")
+                return 0.0
 
 
 async def get_balance(api_key, api_secret):
@@ -117,34 +129,70 @@ async def get_balance(api_key, api_secret):
                 res = await response.json()  # 异步获取响应的JSON数据
                 try:
                     usdc_balance = res['USDC']['available']
-                    sol_balance = res['SOL']['available']
-                    # pyth_balance = res['PYTH']['available']
-                    return float(usdc_balance), float(sol_balance)
                 except Exception as e:
-                    return 0.0, 0.0
+                    usdc_balance = 0
+                try:
+                    sol_balance = res['SOL']['available']
+                except Exception as e:
+                    sol_balance = 0
+                    # pyth_balance = res['PYTH']['available']
+                return float(usdc_balance), float(sol_balance)
             else:
                 print(f"Failed to get balance, status code: {response.status}")
                 return 0.0, 0.0
 
 
-# def get_balance(api_key, api_secret):
-#     url = 'https://api.backpack.exchange/api/v1/capital'
-#     headers = generate_request_params('balance', api_key=api_key, api_secret=api_secret)
-#     res = requests.get(url, headers=headers).json()
-#
-#     usdc_balance = res['USDC']['available']
-#     sol_balance = res['SOL']['available']
-#     # pyth_balance = res['PYTH']['available']
-#     return float(usdc_balance), float(sol_balance)
+async def get_volume(api_key, api_secret):
+    url = 'https://api.backpack.exchange/api/v1/capital'
+    headers = await generate_request_params('volume', api_key=api_key, api_secret=api_secret)
+
+    # 使用aiohttp进行异步HTTP GET请求
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers) as response:
+            # 确保响应状态码为200
+            if response.status == 200:
+                res = await response.json()  # 异步获取响应的JSON数据
+                try:
+                    usdc_balance = res['USDC']['available']
+                except Exception as e:
+                    usdc_balance = 0
+                try:
+                    sol_balance = res['SOL']['available']
+                except Exception as e:
+                    sol_balance = 0
+                    # pyth_balance = res['PYTH']['available']
+                return float(usdc_balance), float(sol_balance)
+            else:
+                print(f"Failed to get balance, status code: {response.status}")
+                return 0.0, 0.0
+
 
 async def get_deposit_addr(api_key, api_secret, chain):
     url = 'https://api.backpack.exchange/wapi/v1/capital/deposit/address'
     headers = await generate_request_params('deposit_addr', api_key=api_key, api_secret=api_secret, chain=chain)
 
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers, params={'blockchain': chain}) as response:
-            response_json = await response.json()  # 解析响应内容为JSON
-            return response_json['address']
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers, params={'blockchain': chain}) as response:
+                if response.status == 200:
+                    content_type = response.headers.get('Content-Type', '')
+                    if 'application/json' in content_type:
+                        response_json = await response.json()
+                        return response_json['address']
+                    elif 'text/plain' in content_type:
+                        response_text = await response.text()
+                        return response_text
+                    else:
+                        # 处理其他类型的响应
+                        response_content = await response.read()
+                        return response_content
+                else:
+                    # 处理响应状态码不为200的情况
+                    print(f"Error: {response.status}")
+                    return None
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return None
 
 
 async def main():
@@ -171,4 +219,4 @@ if __name__ == '__main__':
     # print(get_balance(ldp_api_key, ldp_api_secret))
 
     # 下单
-    # place_sell_order('SOL_USDC', 'Ask', 64.5)
+    # place_order('SOL_USDC', 'Ask', 64.5)
